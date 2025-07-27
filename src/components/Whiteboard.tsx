@@ -16,11 +16,19 @@ export default function Whiteboard({ boardId }: Props) {
   const isDrawing = useRef(false);
   const prevPoint = useRef<Point | null>(null);
 
+  const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point) => {
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.closePath();
+  };
+
   useEffect(() => {
-    // Connect socket
-    socket = io({
-      path: '/api/socket_io',
-    });
+    socket = io({ path: '/api/socket_io' });
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -43,10 +51,9 @@ export default function Whiteboard({ boardId }: Props) {
 
     const mouseMove = (e: MouseEvent) => {
       if (!isDrawing.current || !prevPoint.current) return;
-
       const point = getMouse(e);
       drawLine(ctx, prevPoint.current, point);
-      socket?.emit('draw', { from: prevPoint.current, to: point }); // emit draw event
+      socket?.emit('draw', { from: prevPoint.current, to: point, boardId });
       prevPoint.current = point;
     };
 
@@ -60,10 +67,19 @@ export default function Whiteboard({ boardId }: Props) {
     canvas.addEventListener('mouseup', mouseUp);
     canvas.addEventListener('mouseleave', mouseUp);
 
-    // Receive drawings from others
     socket.on('draw', ({ from, to }: { from: Point; to: Point }) => {
       drawLine(ctx, from, to);
     });
+
+    const loadDrawings = async () => {
+      const res = await fetch(`/api/draw?boardId=${boardId}`);
+      const data = await res.json();
+      data.forEach((line: any) => {
+        drawLine(ctx, line.from, line.to);
+      });
+    };
+
+    loadDrawings();
 
     return () => {
       socket?.disconnect();
@@ -72,18 +88,7 @@ export default function Whiteboard({ boardId }: Props) {
       canvas.removeEventListener('mouseup', mouseUp);
       canvas.removeEventListener('mouseleave', mouseUp);
     };
-  }, []);
-
-  const drawLine = (ctx: CanvasRenderingContext2D, p1: Point, p2: Point) => {
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-    ctx.closePath();
-  };
+  }, [boardId]);
 
   return (
     <canvas
