@@ -1,15 +1,16 @@
 import mongoose from 'mongoose';
 
 const DrawEventSchema = new mongoose.Schema({
-  type: String, // e.g., 'line'
+  type: String,
   color: String,
   thickness: Number,
-  points: [[Number]], // array of [x, y]
+  points: [[Number]],
 }, { _id: false });
 
 const BoardSchema = new mongoose.Schema({
-  name: String,
-  createdBy: String,
+  name: { type: String, unique: true, required: true },
+  createdBy: { type: String, required: true },
+  participants: [{ type: String }],
   drawings: [DrawEventSchema],
 }, {
   timestamps: true,

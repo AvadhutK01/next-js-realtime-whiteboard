@@ -11,6 +11,8 @@
   "dependencies": {
     "@auth/core": "^0.40.0",
     "@auth/mongodb-adapter": "^3.10.0",
+    "axios": "^1.11.0",
+    "lucide-react": "^0.539.0",
     "mongoose": "^8.16.4",
     "next": "15.4.2",
     "next-auth": "^4.24.11",
