@@ -14,22 +14,23 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-gray-200">
-      <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm text-center">
-        <h1 className="text-2xl font-bold mb-4 text-gray-800">
+    <div className="flex items-center justify-center min-h-screen bg-black">
+      <div className="bg-zinc-950 p-8 rounded-2xl shadow-2xl border border-zinc-800 w-full max-w-sm text-center">
+        <h1 className="text-2xl font-bold mb-4 text-white">
           Welcome to Realtime Whiteboard
         </h1>
-        <p className="text-gray-500 mb-6">
+        <p className="text-zinc-400 mb-6">
           Sign in to start creating and collaborating.
         </p>
 
         <button
           onClick={handleLogin}
           disabled={loading}
-          className={`flex items-center justify-center gap-3 w-full py-3 rounded-lg text-white font-medium transition cursor-pointer ${loading
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-black hover:bg-gray-900'
-            }`}
+          className={`flex items-center justify-center gap-3 w-full py-3 rounded-lg text-white font-medium transition cursor-pointer ${
+            loading
+              ? 'bg-zinc-700 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-700'
+          }`}
         >
           {loading ? (
             <svg
@@ -58,13 +59,19 @@ export default function LoginPage() {
           {loading ? 'Signing in...' : 'Sign in with GitHub'}
         </button>
 
-        <p className="mt-6 text-xs text-gray-400">
+        <p className="mt-6 text-xs text-zinc-500">
           By signing in, you agree to our{' '}
-          <a href="#" className="underline hover:text-gray-600">
+          <a
+            href="#"
+            className="underline hover:text-zinc-300"
+          >
             Terms of Service
           </a>{' '}
           and{' '}
-          <a href="#" className="underline hover:text-gray-600">
+          <a
+            href="#"
+            className="underline hover:text-zinc-300"
+          >
             Privacy Policy
           </a>.
         </p>
