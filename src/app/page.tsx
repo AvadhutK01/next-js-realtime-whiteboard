@@ -1,14 +1,19 @@
 'use client';
-import { useEffect, useState } from 'react';
+
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { useSession, signOut } from 'next-auth/react';
 
-// Skeleton loading components
 const BoardSkeleton = () => (
   <div className="p-4 border border-zinc-800 rounded-lg animate-pulse">
     <div className="h-5 bg-zinc-800 rounded mb-2 w-3/4"></div>
     <div className="h-4 bg-zinc-900 rounded w-1/2"></div>
   </div>
+);
+
+const AvatarSkeleton = () => (
+  <div className="w-10 h-10 rounded-full bg-zinc-800 animate-pulse border border-zinc-700" />
 );
 
 const LoadingSpinner = () => (
@@ -32,6 +37,8 @@ const LoadingSpinner = () => (
 
 export default function Home() {
   const router = useRouter();
+  const { data: session } = useSession();
+
   const [boards, setBoards] = useState({ createdBoards: [], joinedBoards: [] });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
@@ -39,6 +46,21 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [navigatingToBoard, setNavigatingToBoard] = useState<string | null>(null);
+
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(true);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const fetchBoards = async () => {
@@ -64,7 +86,7 @@ export default function Home() {
 
     setError('');
     setIsCreating(true);
-    
+
     try {
       const res = await axios.post('/api/boards', { name: newBoardName.trim() });
       setIsModalOpen(false);
@@ -102,7 +124,6 @@ export default function Home() {
       </h2>
       <div className="space-y-3 min-h-[120px]">
         {isLoading ? (
-          // Show skeleton loading
           <>
             <BoardSkeleton />
             <BoardSkeleton />
@@ -130,15 +151,24 @@ export default function Home() {
                     {board.name}
                   </h3>
                   <p className="text-sm text-zinc-400 mt-1">
-                    {title === 'Your Boards' 
-                      ? `Created ${new Date(board.createdAt).toLocaleDateString()}` 
-                      : `Created by ${board.createdBy}`
-                    }
+                    {title === 'Your Boards'
+                      ? `Created ${new Date(board.createdAt).toLocaleDateString()}`
+                      : `Created by ${board.createdBy}`}
                   </p>
                 </div>
                 <div className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <svg className="w-5 h-5 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  <svg
+                    className="w-5 h-5 text-zinc-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 5l7 7-7 7"
+                    />
                   </svg>
                 </div>
               </div>
@@ -152,29 +182,58 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-black">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
+        <header className="flex items-center justify-between mb-8 relative">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              Realtime Whiteboard
-            </h1>
-            <p className="text-zinc-400 text-sm mt-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Realtime Whiteboard</h1>
+            <p className="text-zinc-400 text-sm mt-1 hidden sm:block">
               Create and collaborate on whiteboards in real-time
             </p>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            disabled={isLoading}
-            className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-500 disabled:cursor-not-allowed cursor-pointer transition-colors duration-200 font-medium shadow-xl hover:shadow-2xl shadow-blue-600/20"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-            </svg>
-            New Board
-          </button>
+
+          {/* Desktop Controls */}
+          <div className="hidden sm:flex items-center gap-4 relative z-50">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              disabled={isLoading}
+              className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-500 disabled:cursor-not-allowed transition-colors duration-200 font-medium shadow-xl hover:shadow-2xl shadow-blue-600/20 cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              New Board
+            </button>
+
+            <div className="relative w-10 h-10" ref={dropdownRef}>
+              {session?.user ? (
+                <>
+                  <img
+                    src={session.user.image ?? '/default-avatar.png'}
+                    alt="User Avatar"
+                    className={`absolute inset-0 w-10 h-10 rounded-full border border-zinc-700 cursor-pointer hover:ring-2 hover:ring-blue-500 transition ${avatarLoading ? 'opacity-0' : 'opacity-100'}`}
+                    onClick={() => setDropdownOpen(v => !v)}
+                    onLoad={() => setAvatarLoading(false)}
+                    onError={() => setAvatarLoading(false)}
+                  />
+                  {avatarLoading && <AvatarSkeleton />}
+                  {dropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl p-4 z-50 animate-[fadeInSlide_0.2s_ease-out]">
+                      <p className="text-white font-medium truncate">{session.user.name}</p>
+                      <button
+                        onClick={() => signOut({ callbackUrl: '/' })}
+                        className="mt-3 w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <AvatarSkeleton />
+              )}
+            </div>
+          </div>
         </header>
 
-        {/* Main content */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 p-6">
             {renderBoardSection(
@@ -193,7 +252,47 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Modal */}
+        {/* Floating Action Button for Mobile */}
+        <button
+          onClick={() => setIsModalOpen(true)}
+          disabled={isLoading}
+          className="sm:hidden fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 flex items-center justify-center transition-colors"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+
+        {/* Mobile Avatar (Top-right) */}
+        <div className="sm:hidden fixed top-6 right-6 z-50" ref={dropdownRef}>
+          {session?.user ? (
+            <>
+              <img
+                src={session.user.image ?? '/default-avatar.png'}
+                alt="User Avatar"
+                className={`w-10 h-10 rounded-full border border-zinc-700 cursor-pointer hover:ring-2 hover:ring-blue-500 transition ${avatarLoading ? 'opacity-0' : 'opacity-100'}`}
+                onClick={() => setDropdownOpen(v => !v)}
+                onLoad={() => setAvatarLoading(false)}
+                onError={() => setAvatarLoading(false)}
+              />
+              {avatarLoading && <AvatarSkeleton />}
+              {dropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl p-4 animate-[fadeInSlide_0.2s_ease-out]">
+                  <p className="text-white font-medium truncate">{session.user.name}</p>
+                  <button
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                    className="mt-3 w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <AvatarSkeleton />
+          )}
+        </div>
+
         {isModalOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4">
             <div className="bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 w-full max-w-md mx-4">
@@ -202,14 +301,14 @@ export default function Home() {
                   <h2 className="text-xl font-bold text-white">Create New Board</h2>
                   <button
                     onClick={closeModal}
-                    className="text-zinc-400 hover:text-white cursor-pointer transition-colors"
+                    className="text-zinc-400 hover:text-white transition-colors"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="boardName" className="block text-sm font-medium text-zinc-300 mb-2">
@@ -230,26 +329,26 @@ export default function Home() {
                       autoFocus
                     />
                   </div>
-                  
+
                   {error && (
                     <div className="bg-red-950 bg-opacity-50 border border-red-800 rounded-lg p-3">
                       <p className="text-red-300 text-sm">{error}</p>
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-zinc-800">
                   <button
                     onClick={closeModal}
                     disabled={isCreating}
-                    className="px-4 py-2.5 text-zinc-300 border border-zinc-700 rounded-lg hover:bg-zinc-900 hover:text-white disabled:bg-zinc-900 disabled:cursor-not-allowed cursor-pointer transition-colors duration-200"
+                    className="px-4 py-2.5 text-zinc-300 border border-zinc-700 rounded-lg hover:bg-zinc-900 hover:text-white disabled:bg-zinc-900 disabled:cursor-not-allowed transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={createNewBoard}
                     disabled={isCreating || !newBoardName.trim()}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-500 disabled:cursor-not-allowed cursor-pointer transition-colors duration-200 font-medium min-w-[100px]"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-500 disabled:cursor-not-allowed transition-colors font-medium min-w-[100px]"
                   >
                     {isCreating ? (
                       <>
@@ -266,6 +365,19 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      <style jsx global>{`
+        @keyframes fadeInSlide {
+          0% {
+            opacity: 0;
+            transform: translateY(-5px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </main>
   );
 }
