@@ -46,3 +46,34 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ id: board._id });
 }
+
+export async function PATCH(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { boardId } = await req.json();
+  if (!boardId) {
+    return NextResponse.json({ error: 'Board ID is required' }, { status: 400 });
+  }
+
+  await connectToDatabase();
+  const board = await Board.findById(boardId);
+  if (!board) {
+    return NextResponse.json({ error: 'Board not found' }, { status: 404 });
+  }
+
+  if (board.createdBy === session.user.email) {
+    return NextResponse.json({ error: 'You are the creator of this board' }, { status: 409 });
+  }
+
+  if (board.participants.includes(session.user.email)) {
+    return NextResponse.json({ error: 'Already joined this board' }, { status: 409 });
+  }
+
+  board.participants.push(session.user.email);
+  await board.save();
+
+  return NextResponse.json({ message: 'Joined successfully', id: board._id });
+}
