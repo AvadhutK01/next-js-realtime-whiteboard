@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { useSession, signOut } from 'next-auth/react';
@@ -39,35 +39,40 @@ export default function Home() {
   const router = useRouter();
   const { data: session } = useSession();
 
-  const [boards, setBoards] = useState({ createdBoards: [], joinedBoards: [] });
+  const [boardsCreated, setBoardsCreated] = useState([]);
+  const [boardsJoined, setBoardsJoined] = useState([]);
+
+  const [createdPage, setCreatedPage] = useState(1);
+  const [joinedPage, setJoinedPage] = useState(1);
+
+  const [hasMoreCreated, setHasMoreCreated] = useState(true);
+  const [hasMoreJoined, setHasMoreJoined] = useState(true);
+
+  const [isLoadingCreated, setIsLoadingCreated] = useState(true);
+  const [isLoadingJoined, setIsLoadingJoined] = useState(true);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
   const [joinError, setJoinError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [navigatingToBoard, setNavigatingToBoard] = useState<string | null>(null);
 
-  // Separate dropdown states & refs for desktop and mobile
   const [desktopDropdownOpen, setDesktopDropdownOpen] = useState(false);
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(true);
   const desktopDropdownRef = useRef<HTMLDivElement>(null);
   const mobileDropdownRef = useRef<HTMLDivElement>(null);
 
-  // FAB open state (mobile)
   const [fabOpen, setFabOpen] = useState(false);
 
-  // Handle click outside for desktop dropdown
+  // Click outside handlers for dropdowns
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        desktopDropdownRef.current &&
-        !desktopDropdownRef.current.contains(e.target as Node)
-      ) {
+      if (desktopDropdownRef.current && !desktopDropdownRef.current.contains(e.target as Node)) {
         setDesktopDropdownOpen(false);
       }
     };
@@ -75,13 +80,9 @@ export default function Home() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handle click outside for mobile dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        mobileDropdownRef.current &&
-        !mobileDropdownRef.current.contains(e.target as Node)
-      ) {
+      if (mobileDropdownRef.current && !mobileDropdownRef.current.contains(e.target as Node)) {
         setMobileDropdownOpen(false);
       }
     };
@@ -89,20 +90,42 @@ export default function Home() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchBoards = async () => {
+  const fetchBoards = async (type: 'created' | 'joined', page: number) => {
     try {
-      setIsLoading(true);
-      const res = await axios.get('/api/boards');
-      setBoards(res.data);
+      if (type === 'created') setIsLoadingCreated(true);
+      else setIsLoadingJoined(true);
+  
+      const res = await axios.get(`/api/boards?type=${type}&page=${page}`);
+      const { boards, hasMore } = res.data;
+  
+      if (type === 'created') {
+        setBoardsCreated(prev => {
+          // Filter out duplicates by _id
+          const existingIds = new Set(prev.map(b => b._id));
+          const filtered = boards.filter(board => !existingIds.has(board._id));
+          return [...prev, ...filtered];
+        });
+        setHasMoreCreated(hasMore);
+      } else {
+        setBoardsJoined(prev => {
+          const existingIds = new Set(prev.map(b => b._id));
+          const filtered = boards.filter(board => !existingIds.has(board._id));
+          return [...prev, ...filtered];
+        });
+        setHasMoreJoined(hasMore);
+      }
     } catch (err) {
       console.error('Failed to fetch boards:', err);
     } finally {
-      setIsLoading(false);
+      if (type === 'created') setIsLoadingCreated(false);
+      else setIsLoadingJoined(false);
     }
   };
+  
 
   useEffect(() => {
-    fetchBoards();
+    fetchBoards('created', 1);
+    fetchBoards('joined', 1);
   }, []);
 
   const createNewBoard = async () => {
@@ -114,8 +137,6 @@ export default function Home() {
     setIsCreating(true);
     try {
       const res = await axios.post('/api/boards', { name: newBoardName.trim() });
-      setIsModalOpen(false);
-      setNewBoardName('');
       setNavigatingToBoard(res.data.id);
       router.push(`/whiteboard/${res.data.id}`);
     } catch (err: any) {
@@ -134,9 +155,6 @@ export default function Home() {
     setIsJoining(true);
     try {
       const res = await axios.patch('/api/boards', { boardId: joinCode.trim() });
-      setIsJoinModalOpen(false);
-      setJoinCode('');
-      await fetchBoards();
       setNavigatingToBoard(res.data.id);
       router.push(`/whiteboard/${res.data.id}`);
     } catch (err: any) {
@@ -151,12 +169,6 @@ export default function Home() {
     router.push(`/whiteboard/${boardId}`);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !isCreating) {
-      createNewBoard();
-    }
-  };
-
   const closeModal = () => {
     setIsModalOpen(false);
     setNewBoardName('');
@@ -169,15 +181,80 @@ export default function Home() {
     setJoinError('');
   };
 
-  const renderBoardSection = (title: string, boards: any[], emptyMessage: string) => (
+  // Infinite Scroll hook
+  const useInfiniteScroll = ({
+    loadMore,
+    hasMore,
+    isLoading,
+    currentPage,
+  }: {
+    loadMore: () => void;
+    hasMore: boolean;
+    isLoading: boolean;
+    currentPage: number;
+  }) => {
+    const observer = useRef<IntersectionObserver | null>(null);
+    const lastElementRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        if (isLoading) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(
+          entries => {
+            if (
+              entries[0].isIntersecting &&
+              hasMore &&
+              !isLoading &&
+              currentPage > 0
+            ) {
+              loadMore();
+            }
+          },
+          { threshold: 0.5 }
+        );
+        if (node) observer.current.observe(node);
+      },
+      [isLoading, hasMore, loadMore, currentPage]
+    );
+    return lastElementRef;
+  };
+
+
+  const createdBoardsRef = useInfiniteScroll({
+    loadMore: () => {
+      const next = createdPage + 1;
+      setCreatedPage(next);
+      fetchBoards('created', next);
+    },
+    hasMore: hasMoreCreated,
+    isLoading: isLoadingCreated,
+    currentPage: createdPage,
+  });
+
+  const joinedBoardsRef = useInfiniteScroll({
+    loadMore: () => {
+      const next = joinedPage + 1;
+      setJoinedPage(next);
+      fetchBoards('joined', next);
+    },
+    hasMore: hasMoreJoined,
+    isLoading: isLoadingJoined,
+    currentPage: joinedPage,
+  });
+
+
+  const renderBoardSection = (
+    title: string,
+    boards: any[],
+    emptyMessage: string,
+    isLoading: boolean,
+    hasMore: boolean,
+    loaderRef: (node: HTMLDivElement | null) => void
+  ) => (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-white border-b border-zinc-800 pb-2">
-        {title}
-      </h2>
-      <div className="space-y-3 min-h-[120px]">
-        {isLoading ? (
+      <h2 className="text-xl font-semibold text-white border-b border-zinc-800 pb-2">{title}</h2>
+      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+        {isLoading && boards.length === 0 ? (
           <>
-            <BoardSkeleton />
             <BoardSkeleton />
             <BoardSkeleton />
           </>
@@ -186,41 +263,50 @@ export default function Home() {
             <p className="text-zinc-500 text-sm">{emptyMessage}</p>
           </div>
         ) : (
-          boards.map((board: any) => (
-            <div
-              key={board._id}
-              onClick={() => handleBoardClick(board._id)}
-              className="group relative p-4 border border-zinc-800 rounded-lg hover:border-zinc-700 hover:bg-zinc-900 cursor-pointer transition-all duration-200 hover:shadow-lg shadow-black/20"
-            >
-              {navigatingToBoard === board._id && (
-                <div className="absolute inset-0 bg-zinc-900 bg-opacity-90 flex items-center justify-center rounded-lg">
+          <>
+            {boards.map(board => (
+              <div
+                key={board._id}
+                onClick={() => handleBoardClick(board._id)}
+                className="group relative p-4 border border-zinc-800 rounded-lg hover:border-zinc-700 hover:bg-zinc-900 cursor-pointer transition-all duration-200 hover:shadow-lg shadow-black/20"
+              >
+                {navigatingToBoard === board._id && (
+                  <div className="absolute inset-0 bg-zinc-900 bg-opacity-90 flex items-center justify-center rounded-lg">
+                    <LoadingSpinner />
+                  </div>
+                )}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-white truncate group-hover:text-blue-400 transition-colors">
+                      {board.name}
+                    </h3>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      {title === 'Your Boards'
+                        ? `Created ${new Date(board.createdAt).toLocaleDateString()}`
+                        : `Created by ${board.createdBy}`}
+                    </p>
+                  </div>
+                  <div className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg
+                      className="w-5 h-5 text-zinc-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div ref={loaderRef} style={{ minHeight: 32 }}>
+              {isLoading && hasMore && (
+                <div className="flex justify-center py-2">
                   <LoadingSpinner />
                 </div>
               )}
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-white truncate group-hover:text-blue-400 transition-colors">
-                    {board.name}
-                  </h3>
-                  <p className="text-sm text-zinc-400 mt-1">
-                    {title === 'Your Boards'
-                      ? `Created ${new Date(board.createdAt).toLocaleDateString()}`
-                      : `Created by ${board.createdBy}`}
-                  </p>
-                </div>
-                <div className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <svg
-                    className="w-5 h-5 text-zinc-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
             </div>
-          ))
+          </>
         )}
       </div>
     </div>
@@ -241,7 +327,7 @@ export default function Home() {
           <div className="hidden sm:flex items-center gap-4 relative z-50">
             <button
               onClick={() => setIsModalOpen(true)}
-              disabled={isLoading}
+              disabled={isLoadingCreated || isLoadingJoined}
               className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-500 disabled:cursor-not-allowed transition-colors duration-200 font-medium shadow-xl hover:shadow-2xl shadow-blue-600/20 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,11 +380,25 @@ export default function Home() {
         {/* Board Lists */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 p-6">
-            {renderBoardSection('Your Boards', boards.createdBoards, 'No boards created yet. Create your first board to get started!')}
+            {renderBoardSection(
+              'Your Boards',
+              boardsCreated,
+              'No boards created yet. Create your first board to get started!',
+              isLoadingCreated,
+              hasMoreCreated,
+              createdBoardsRef
+            )}
           </div>
 
           <div className="bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 p-6">
-            {renderBoardSection('Joined Boards', boards.joinedBoards, 'No boards joined yet. Ask someone to share a board with you!')}
+            {renderBoardSection(
+              'Joined Boards',
+              boardsJoined,
+              'No boards joined yet. Ask someone to share a board with you!',
+              isLoadingJoined,
+              hasMoreJoined,
+              joinedBoardsRef
+            )}
           </div>
         </section>
 
@@ -398,15 +498,15 @@ export default function Home() {
                       id="joinCode"
                       type="text"
                       value={joinCode}
-                      onChange={(e) => {
+                      onChange={e => {
                         setJoinCode(e.target.value);
                         if (joinError) setJoinError('');
                       }}
                       placeholder="Paste the code here"
                       className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-700 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors placeholder-zinc-500"
                       disabled={isJoining}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !isJoining) {
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !isJoining) {
                           handleJoinBoard();
                         }
                       }}
@@ -471,11 +571,15 @@ export default function Home() {
                       id="boardName"
                       type="text"
                       value={newBoardName}
-                      onChange={(e) => {
+                      onChange={e => {
                         setNewBoardName(e.target.value);
                         if (error) setError('');
                       }}
-                      onKeyPress={handleKeyPress}
+                      onKeyPress={e => {
+                        if (e.key === 'Enter' && !isCreating) {
+                          createNewBoard();
+                        }
+                      }}
                       placeholder="Enter a unique board name"
                       className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-700 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors placeholder-zinc-500"
                       disabled={isCreating}
@@ -527,6 +631,16 @@ export default function Home() {
             opacity: 1;
             transform: translateY(0);
           }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #555;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #888;
         }
       `}</style>
     </main>

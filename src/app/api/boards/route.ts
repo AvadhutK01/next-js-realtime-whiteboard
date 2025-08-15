@@ -4,20 +4,36 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  await connectToDatabase();
-  const createdBoards = await Board.find({ createdBy: session.user.email }).lean();
-  const joinedBoards = await Board.find({
-    participants: session.user.email,
-    createdBy: { $ne: session.user.email },
-  }).lean();
+  const { searchParams } = new URL(req.url);
+  const type = searchParams.get("type") || "created"; 
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = 5;
 
-  return NextResponse.json({ createdBoards, joinedBoards });
+  await connectToDatabase();
+
+  let query = {};
+  if (type === "created") {
+    query = { createdBy: session.user.email };
+  } else {
+    query = { participants: session.user.email, createdBy: { $ne: session.user.email } };
+  }
+
+  const boards = await Board.find(query)
+    .sort({ createdAt: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit + 1) 
+    .lean();
+
+  const hasMore = boards.length > limit;
+  if (hasMore) boards.pop(); 
+
+  return NextResponse.json({ boards, hasMore });
 }
 
 export async function POST(req: Request) {
