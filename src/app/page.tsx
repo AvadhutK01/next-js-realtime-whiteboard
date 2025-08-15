@@ -51,17 +51,38 @@ export default function Home() {
   const [isJoining, setIsJoining] = useState(false);
   const [navigatingToBoard, setNavigatingToBoard] = useState<string | null>(null);
 
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  // Separate dropdown states & refs for desktop and mobile
+  const [desktopDropdownOpen, setDesktopDropdownOpen] = useState(false);
+  const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(true);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const desktopDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
 
   // FAB open state (mobile)
   const [fabOpen, setFabOpen] = useState(false);
 
+  // Handle click outside for desktop dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
+      if (
+        desktopDropdownRef.current &&
+        !desktopDropdownRef.current.contains(e.target as Node)
+      ) {
+        setDesktopDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle click outside for mobile dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        mobileDropdownRef.current &&
+        !mobileDropdownRef.current.contains(e.target as Node)
+      ) {
+        setMobileDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -97,7 +118,6 @@ export default function Home() {
       setNewBoardName('');
       setNavigatingToBoard(res.data.id);
       router.push(`/whiteboard/${res.data.id}`);
-      // Optionally refetch boards after navigation
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create board');
     } finally {
@@ -116,7 +136,6 @@ export default function Home() {
       const res = await axios.patch('/api/boards', { boardId: joinCode.trim() });
       setIsJoinModalOpen(false);
       setJoinCode('');
-      // Refetch boards and navigate
       await fetchBoards();
       setNavigatingToBoard(res.data.id);
       router.push(`/whiteboard/${res.data.id}`);
@@ -241,24 +260,24 @@ export default function Home() {
               Join Room
             </button>
 
-            <div className="relative w-10 h-10" ref={dropdownRef}>
+            <div className="relative w-10 h-10" ref={desktopDropdownRef}>
               {session?.user ? (
                 <>
                   <img
                     src={session.user.image ?? '/default-avatar.png'}
                     alt="User Avatar"
                     className={`absolute inset-0 w-10 h-10 rounded-full border border-zinc-700 cursor-pointer hover:ring-2 hover:ring-blue-500 transition ${avatarLoading ? 'opacity-0' : 'opacity-100'}`}
-                    onClick={() => setDropdownOpen(v => !v)}
+                    onClick={() => setDesktopDropdownOpen(v => !v)}
                     onLoad={() => setAvatarLoading(false)}
                     onError={() => setAvatarLoading(false)}
                   />
                   {avatarLoading && <AvatarSkeleton />}
-                  {dropdownOpen && (
+                  {desktopDropdownOpen && (
                     <div className="absolute right-0 mt-2 w-48 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl p-4 z-50 animate-[fadeInSlide_0.2s_ease-out]">
                       <p className="text-white font-medium truncate">{session.user.name}</p>
                       <button
                         onClick={() => signOut({ callbackUrl: '/' })}
-                        className="mt-3 w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                        className="mt-3 w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition cursor-pointer"
                       >
                         Logout
                       </button>
@@ -272,25 +291,18 @@ export default function Home() {
           </div>
         </header>
 
+        {/* Board Lists */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 p-6">
-            {renderBoardSection(
-              'Your Boards',
-              boards.createdBoards,
-              'No boards created yet. Create your first board to get started!'
-            )}
+            {renderBoardSection('Your Boards', boards.createdBoards, 'No boards created yet. Create your first board to get started!')}
           </div>
 
           <div className="bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 p-6">
-            {renderBoardSection(
-              'Joined Boards',
-              boards.joinedBoards,
-              'No boards joined yet. Ask someone to share a board with you!'
-            )}
+            {renderBoardSection('Joined Boards', boards.joinedBoards, 'No boards joined yet. Ask someone to share a board with you!')}
           </div>
         </section>
 
-        {/* Mobile FAB with icons only */}
+        {/* Mobile FAB */}
         <div className="sm:hidden fixed bottom-6 right-6 flex flex-col items-center gap-3 z-50">
           {fabOpen && (
             <>
@@ -318,10 +330,8 @@ export default function Home() {
               </button>
             </>
           )}
-
-          {/* Main FAB */}
           <button
-            onClick={() => setFabOpen((prev) => !prev)}
+            onClick={() => setFabOpen(prev => !prev)}
             className="w-14 h-14 rounded-full bg-pink-600 text-white shadow-xl hover:bg-pink-700 flex items-center justify-center transition-colors"
           >
             {fabOpen ? (
@@ -337,24 +347,24 @@ export default function Home() {
         </div>
 
         {/* Mobile Avatar */}
-        <div className="sm:hidden fixed top-6 right-6 z-50" ref={dropdownRef}>
+        <div className="sm:hidden fixed top-6 right-6 z-50" ref={mobileDropdownRef}>
           {session?.user ? (
             <>
               <img
                 src={session.user.image ?? '/default-avatar.png'}
                 alt="User Avatar"
                 className={`w-10 h-10 rounded-full border border-zinc-700 cursor-pointer hover:ring-2 hover:ring-blue-500 transition ${avatarLoading ? 'opacity-0' : 'opacity-100'}`}
-                onClick={() => setDropdownOpen(v => !v)}
+                onClick={() => setMobileDropdownOpen(v => !v)}
                 onLoad={() => setAvatarLoading(false)}
                 onError={() => setAvatarLoading(false)}
               />
               {avatarLoading && <AvatarSkeleton />}
-              {dropdownOpen && (
+              {mobileDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl p-4 animate-[fadeInSlide_0.2s_ease-out]">
                   <p className="text-white font-medium truncate">{session.user.name}</p>
                   <button
                     onClick={() => signOut({ callbackUrl: '/' })}
-                    className="mt-3 w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                    className="mt-3 w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition cursor-pointer"
                   >
                     Logout
                   </button>
@@ -366,7 +376,7 @@ export default function Home() {
           )}
         </div>
 
-        {/* Join Room Modal */}
+        {/* Join Modal */}
         {isJoinModalOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4">
             <div className="bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 w-full max-w-md mx-4">
@@ -452,7 +462,6 @@ export default function Home() {
                     </svg>
                   </button>
                 </div>
-
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="boardName" className="block text-sm font-medium text-zinc-300 mb-2">
@@ -473,14 +482,12 @@ export default function Home() {
                       autoFocus
                     />
                   </div>
-
                   {error && (
                     <div className="bg-red-950 bg-opacity-50 border border-red-800 rounded-lg p-3">
                       <p className="text-red-300 text-sm">{error}</p>
                     </div>
                   )}
                 </div>
-
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-zinc-800">
                   <button
                     onClick={closeModal}
